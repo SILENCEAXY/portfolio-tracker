@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Portfolio Tracker · 持倉追蹤</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📊%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -335,7 +336,8 @@ const CONFIG = {
 // ═══════════════════════════════════════════
 // Supabase Client
 // ═══════════════════════════════════════════
-let supabase = null;
+// 暫存 client 實例（全域 supabase 是 CDN 載入的 createClient 函數）
+let supabaseClient = null;
 
 // ═══════════════════════════════════════════
 // Auth
@@ -346,10 +348,12 @@ const Auth = {
       UI.showError('請先設定 Supabase 和 Worker (修改 index.html 中的 CONFIG)');
       return false;
     }
-    supabase = window.supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey, {
+    supabaseClient = window.supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey, {
       auth: { persistSession: true, autoRefreshToken: true }
     });
-    const { data: { session } } = await supabase.auth.getSession();
+    // 將客戶端綁到全域 supabase（覆蓋原本的 createClient 函數）
+    window.supabase = supabaseClient;
+    const { data: { session } } = await supabaseClient.auth.getSession();
     if (session) { Auth.onLogin(session.user); return true; }
     else { document.getElementById('loadingScreen').style.display = 'none'; document.getElementById('authScreen').style.display = 'flex'; return false; }
   },
