@@ -3,11 +3,11 @@
 港股 + 美股 持倉追蹤工具，多裝置雲端同步。
 
 ## 線上使用
-👉 https://silenceaxy.github.io/portfolio-tracker/
+👉 https://silenceaxy.github.io/
 
 ## 架構
 ```
-GitHub Pages (前端)
+GitHub Pages (前端, repo 根目錄)
   ↓
 Cloudflare Worker (報價 API)
   ↓
@@ -18,7 +18,7 @@ Supabase (雲端資料庫 + 認證)
 
 ## 部署結構
 - `/worker/` — Cloudflare Worker (報價反代)
-- `/docs/` — GitHub Pages 靜態網站
+- `/index.html` — GitHub Pages 靜態網站 (根目錄)
 
 ## 本地開發
 1. 進入 `worker/`，用 wrangler 部署：
