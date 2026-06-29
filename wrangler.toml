@@ -1,6 +1,4 @@
-name = "stock-tracker-api"
+﻿name = "portfolio-tracker"
 main = "worker/index.js"
 compatibility_date = "2025-01-01"
 
-[vars]
-SUPABASE_URL = "https://jjijzpfwmoqxjarbcivh.supabase.co"
