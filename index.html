@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📊%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root {
@@ -32,7 +32,7 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{font-size:15px;scroll-behavior:smooth}
 body{
-  font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
+  font-family:'Noto Sans TC',system-ui,-apple-system,'PingFang TC','Microsoft JhengHei','Segoe UI',sans-serif;
   background:var(--bg-root);
   color:var(--text-primary);
   min-height:100vh;
@@ -121,6 +121,19 @@ body::before{
   font-weight:600;letter-spacing:.04em;
 }
 
+/* Tab Bar */
+.tab-bar{display:flex;gap:8px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:0}
+.tab-btn{
+  background:transparent;border:none;color:var(--text-muted);
+  padding:12px 20px;cursor:pointer;font-size:.9rem;
+  font-weight:500;border-bottom:2px solid transparent;
+  transition:color .2s,border-color .2s;
+  font-family:inherit;
+}
+.tab-btn:hover{color:var(--text-secondary)}
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
+
+
 /* Table */
 .table-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border)}
 table{width:100%;border-collapse:collapse;font-size:.85rem}
@@ -137,7 +150,7 @@ td{
   font-family:'JetBrains Mono',monospace;font-size:.82rem;
   white-space:nowrap;
 }
-td.name{font-family:system-ui,-apple-system,sans-serif;font-size:.85rem}
+td.name{font-family:'Noto Sans TC',system-ui,-apple-system,'PingFang TC','Microsoft JhengHei',sans-serif;font-size:.85rem;font-weight:500}
 td.right{text-align:right}
 tr.data-row{cursor:pointer;transition:background .15s}
 tr.data-row:hover{background:var(--bg-card-hover)}
@@ -294,10 +307,15 @@ input[type="date"]{color-scheme:dark}
     </div>
   </header>
 
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="active" onclick="App.switchTab('active')">💼 現有持倉</button>
+    <button class="tab-btn" data-tab="history" onclick="App.switchTab('history')">📜 歷史記錄</button>
+  </div>
+
   <div class="summary" id="summaryHK"></div>
   <div class="summary" id="summaryUS"></div>
 
-  <div id="holdingsContainer">
+  <div id="holdingsContainer" data-tab-panel="active">
     <div class="empty-state" id="emptyState">
       <div class="icon">📊</div>
       <h3>尚無持倉記錄</h3>
@@ -305,6 +323,8 @@ input[type="date"]{color-scheme:dark}
       <button class="btn btn-primary" onclick="App.showAddModal()">+ 新增第一筆持倉</button>
     </div>
   </div>
+
+  <div id="historyContainer" data-tab-panel="history" style="display:none"></div>
 
   <div class="status-bar" id="statusBar">
     <div class="status-left">
@@ -413,7 +433,23 @@ const Data = {
   async add(h) { const {data,error}=await supabase.from('holdings').insert({symbol:h.symbol,name:h.name,market:h.market,buy_price:h.buyPrice,quantity:h.quantity,buy_date:h.buyDate,user_id:(await supabase.auth.getSession()).data.session.user.id}).select().single(); if(error)throw error; return data; },
   async update(id,u) { const {error}=await supabase.from('holdings').update({symbol:u.symbol,name:u.name,market:u.market,buy_price:u.buyPrice,quantity:u.quantity,buy_date:u.buyDate}).eq('id',id); if(error)throw error; },
   async remove(id) { const {error}=await supabase.from('holdings').delete().eq('id',id); if(error)throw error; },
-  async importAll(rows) { const userId=(await supabase.auth.getSession()).data.session.user.id; const inserts=rows.map(r=>({symbol:r.symbol,name:r.name||r.symbol,market:r.market,buy_price:r.buyPrice,quantity:r.quantity,buy_date:r.buyDate,user_id:userId})); const {error}=await supabase.from('holdings').insert(inserts); if(error)throw error; }
+  async importAll(rows) { const userId=(await supabase.auth.getSession()).data.session.user.id; const inserts=rows.map(r=>({symbol:r.symbol,name:r.name||r.symbol,market:r.market,buy_price:r.buyPrice,quantity:r.quantity,buy_date:r.buyDate,user_id:userId})); const {error}=await supabase.from('holdings').insert(inserts); if(error)throw error; },
+  async closeHolding(h,sellPrice,sellDate){
+    const userId=(await supabase.auth.getSession()).data.session.user.id;
+    const pnl=(parseFloat(sellPrice)-parseFloat(h.buyPrice))*h.quantity;
+    const pnlPct=h.buyPrice>0?((parseFloat(sellPrice)-parseFloat(h.buyPrice))/parseFloat(h.buyPrice))*100:0;
+    const {error:err1}=await supabase.from('holdings_history').insert({user_id:userId,symbol:h.symbol,name:h.name,market:h.market,buy_price:h.buyPrice,sell_price:sellPrice,quantity:h.quantity,buy_date:h.buyDate,sell_date:sellDate,pnl:pnl,pnl_pct:pnlPct});
+    if(err1)throw err1;
+    const {error:err2}=await supabase.from('holdings').delete().eq('id',h.id);
+    if(err2)throw err2;
+    return {pnl,pnlPct};
+  },
+  async getHistory(){
+    const {data,error}=await supabase.from('holdings_history').select('*').order('sell_date',{ascending:false});
+    if(error)throw error;
+    return data.map(r=>({id:r.id,symbol:r.symbol,name:r.name,market:r.market,buyPrice:parseFloat(r.buy_price),sellPrice:parseFloat(r.sell_price),quantity:r.quantity,buyDate:r.buy_date,sellDate:r.sell_date,pnl:parseFloat(r.pnl),pnlPct:parseFloat(r.pnl_pct)}));
+  },
+  async removeHistory(id){const {error}=await supabase.from('holdings_history').delete().eq('id',id);if(error)throw error;}
 };
 
 // ═══════════════════════════════════════════
@@ -473,10 +509,19 @@ const UI={
     container.querySelectorAll('.market-section').forEach(el=>el.remove()); container.insertAdjacentHTML('beforeend',html);
   },
   _marketTable(flag,title,currency,items){
-    const rows=items.map(c=>{const plClass=c.unrealizedPL>=0?'gain-text':'loss-text',dayClass=c.dayChange>=0?'gain-text':'loss-text'; return `<tr class="data-row" onclick="App.showEditModal('${c.id}')" title="點擊編輯"><td class="name">${Utils.escapeHtml(c.name)}</td><td>${c.symbol}</td><td class="right">${Fmt.price(c.currentPrice,currency)}</td><td class="right ${dayClass} price-flash" data-id="${c.id}">${Fmt.pct(c.dayChangePct)}</td><td class="right">${Fmt.price(c.buyPrice,currency)}</td><td class="right">${c.quantity.toLocaleString()}</td><td class="right">${Fmt.money(c.marketValue,currency)}</td><td class="right ${plClass}">${Fmt.money(c.unrealizedPL,currency)}</td><td class="right ${plClass}">${Fmt.pct(c.unrealizedPct)}</td><td class="right" style="font-size:.7rem;color:var(--text-muted)">${Fmt.date(c.buyDate)}</td><td class="right"><button class="btn btn-sm btn-danger" onclick="event.stopPropagation();App.deleteHolding('${c.id}')">✕</button></td></tr>`;}).join('');
+    const rows=items.map(c=>{const plClass=c.unrealizedPL>=0?'gain-text':'loss-text',dayClass=c.dayChange>=0?'gain-text':'loss-text'; return `<tr class="data-row" onclick="App.showEditModal('${c.id}')" title="點擊編輯"><td class="name">${Utils.escapeHtml(c.name)}</td><td>${c.symbol}</td><td class="right">${Fmt.price(c.currentPrice,currency)}</td><td class="right ${dayClass} price-flash" data-id="${c.id}">${Fmt.pct(c.dayChangePct)}</td><td class="right">${Fmt.price(c.buyPrice,currency)}</td><td class="right">${c.quantity.toLocaleString()}</td><td class="right">${Fmt.money(c.marketValue,currency)}</td><td class="right ${plClass}">${Fmt.money(c.unrealizedPL,currency)}</td><td class="right ${plClass}">${Fmt.pct(c.unrealizedPct)}</td><td class="right" style="font-size:.7rem;color:var(--text-muted)">${Fmt.date(c.buyDate)}</td><td class="right"><button class="btn btn-sm" onclick="event.stopPropagation();App.showCloseModal('${c.id}')" title="平倉">✓</button> <button class="btn btn-sm btn-danger" onclick="event.stopPropagation();App.deleteHolding('${c.id}')" title="刪除">✕</button></td></tr>`;}).join('');
     return `<div class="market-section"><div class="market-header"><span class="market-flag">${flag}</span><span class="market-title">${title}</span><span class="market-badge">${items.length} 持倉</span></div><div class="table-wrap"><table><thead><tr><th>名稱</th><th>代碼</th><th class="right">現價</th><th class="right">日漲跌</th><th class="right">買入價</th><th class="right">數量</th><th class="right">市值</th><th class="right">盈虧</th><th class="right">報酬率</th><th class="right">買入日</th><th class="right"></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
   },
   updateStatus(ok,count){document.getElementById('statusDot').className=ok?'status-dot':'status-dot error'; document.getElementById('statusText').textContent=ok?`已連接 · ${count} 持倉`:'部分價格獲取失敗'; document.getElementById('lastUpdate').textContent='更新於 '+Fmt.time(Date.now()); document.getElementById('syncStatus').textContent='☁️ 已同步';},
+  _historyTableHTML(items,currency,rate){
+    if(items.length===0)return '';
+    const flag=currency==='HKD'?'🇭🇰':'🇺🇸';
+    const title=currency==='HKD'?'港股':'美股';
+    const totalPnl=items.reduce((s,x)=>s+x.pnl,0);
+    const rows=items.map(h=>{const pnlClass=h.pnl>=0?'gain-text':'loss-text';return `<tr class="data-row"><td class="name">${Utils.escapeHtml(h.name||h.symbol)}</td><td>${h.symbol}</td><td class="right">${Fmt.price(h.buyPrice,currency)}</td><td class="right">${Fmt.price(h.sellPrice,currency)}</td><td class="right">${h.quantity.toLocaleString()}</td><td class="right ${pnlClass}">${Fmt.money(h.pnl,currency)}</td><td class="right ${pnlClass}">${Fmt.pct(h.pnlPct)}</td><td class="right" style="font-size:.7rem;color:var(--text-muted)">${Fmt.date(h.buyDate)} → ${Fmt.date(h.sellDate)}</td><td class="right"><button class="btn btn-sm btn-danger" onclick="App.deleteHistory('${h.id}')" title="刪除記錄">✕</button></td></tr>`;}).join('');
+    const totalClass=totalPnl>=0?'gain-text':'loss-text';
+    return `<div class="market-section"><div class="market-header"><span class="market-flag">${flag}</span><span class="market-title">${title}</span><span class="market-badge">${items.length} 筆 · 損益 ${Fmt.money(totalPnl,currency)}</span></div><div class="table-wrap"><table><thead><tr><th>名稱</th><th>代碼</th><th class="right">買入價</th><th class="right">賣出價</th><th class="right">數量</th><th class="right ${totalClass}">損益</th><th class="right ${totalClass}">報酬率</th><th class="right">期間</th><th class="right"></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  },
   flashCell(id,dir){document.querySelectorAll(`.price-flash[data-id="${id}"]`).forEach(cell=>{cell.classList.add(dir>=0?'flash-gain':'flash-loss');setTimeout(()=>cell.classList.remove('flash-gain','flash-loss'),1200);});},
   toast(msg,type){const container=document.getElementById('toastContainer'),el=document.createElement('div');el.className='toast '+(type||'');el.textContent=msg;container.appendChild(el);setTimeout(()=>{el.style.opacity='0';el.style.transition='opacity .3s';setTimeout(()=>el.remove(),300);},2800);},
   showError(msg){document.getElementById('loadingScreen').innerHTML=`<div style="color:var(--loss);margin-bottom:12px;font-size:3rem">⚠️</div><div style="color:var(--loss);font-size:1rem;max-width:400px;text-align:center">${msg}</div>`;}
@@ -494,7 +539,7 @@ const Modal={
   show(title,contentHTML,onSave){
     document.getElementById('modalContainer').innerHTML=`<div class="modal-overlay" onclick="if(event.target===this)Modal.close()"><div class="modal"><h2>${title}</h2>${contentHTML}<div class="modal-actions"><button class="btn" onclick="Modal.close()">取消</button><button class="btn btn-primary" id="modalSaveBtn">儲存</button></div></div></div>`;
     document.getElementById('modalSaveBtn').addEventListener('click',()=>{const r=onSave();if(r!==false)Modal.close();});
-    setTimeout(()=>{document.querySelector('.modal input,select')?.focus();if(typeof App!=='undefined'&&App.initDateSelectors&&document.getElementById('fBuyYear')){const hidden=document.getElementById('fBuyDate');App.initDateSelectors(hidden?.value||'');}},100);
+    setTimeout(()=>{document.querySelector('.modal input,select')?.focus();if(typeof App!=='undefined'&&App.initDateSelectors){const buyHidden=document.getElementById('fBuyDate');if(buyHidden)App.initDateSelectors('fBuyYear','fBuyMonth','fBuyDay',buyHidden.value||'');const sellHidden=document.getElementById('fSellDate');if(sellHidden)App.initDateSelectors('fSellYear','fSellMonth','fSellDay',sellHidden.value||'');}},100);
   },
   close:()=>{document.getElementById('modalContainer').innerHTML='';}
 };
@@ -509,8 +554,8 @@ const App={
   showAddModal(){Modal.show('新增持倉',`<div class="form-group"><label>市場</label><select id="fMarket" onchange="App.onMarketChange()"><option value="HK">🇭🇰 港股</option><option value="US">🇺🇸 美股</option></select></div><div class="form-row"><div class="form-group"><label>股票代碼</label><input type="text" id="fSymbol" placeholder="如 0700 或 AAPL"><div class="form-hint" id="fSymbolHint">港股輸入4-5位數字</div></div><div class="form-group"><label>股票名稱</label><input type="text" id="fName" placeholder="如 騰訊控股"></div></div><div class="form-row"><div class="form-group"><label>買入價格</label><input type="number" id="fBuyPrice" placeholder="0.00" step="0.01" min="0.01"></div><div class="form-group"><label>數量（股）</label><input type="number" id="fQuantity" placeholder="0" step="1" min="1"></div></div><div class="form-group"><label>買入日期 (yyyy/mm/dd)</label><div class="form-row" style="grid-template-columns:1.4fr 1fr 1fr;gap:8px"><select id="fBuyYear"></select><select id="fBuyMonth"><option value="01">01</option><option value="02">02</option><option value="03">03</option><option value="04">04</option><option value="05">05</option><option value="06">06</option><option value="07">07</option><option value="08">08</option><option value="09">09</option><option value="10">10</option><option value="11">11</option><option value="12">12</option></select><select id="fBuyDay"></select></div><input type="hidden" id="fBuyDate"></div>`,()=>App.saveNewHolding());},
   showEditModal(id){(async()=>{const holdings=await Data.getAll();const h=holdings.find(h=>h.id===id);if(!h)return;Modal.show('編輯持倉',`<div class="form-group"><label>市場</label><select id="fMarket" onchange="App.onMarketChange()"><option value="HK" ${h.market==='HK'?'selected':''}>🇭🇰 港股</option><option value="US" ${h.market==='US'?'selected':''}>🇺🇸 美股</option></select></div><div class="form-row"><div class="form-group"><label>股票代碼</label><input type="text" id="fSymbol" value="${Utils.escapeHtml(h.symbol)}"><div class="form-hint" id="fSymbolHint">${h.market==='HK'?'港股輸入4-5位數字':'美股輸入代碼'}</div></div><div class="form-group"><label>股票名稱</label><input type="text" id="fName" value="${Utils.escapeHtml(h.name||'')}"></div></div><div class="form-row"><div class="form-group"><label>買入價格</label><input type="number" id="fBuyPrice" value="${h.buyPrice}" step="0.01" min="0.01"></div><div class="form-group"><label>數量（股）</label><input type="number" id="fQuantity" value="${h.quantity}" step="1" min="1"></div></div><div class="form-group"><label>買入日期 (yyyy/mm/dd)</label><div class="form-row" style="grid-template-columns:1.4fr 1fr 1fr;gap:8px"><select id="fBuyYear"></select><select id="fBuyMonth"><option value="01">01</option><option value="02">02</option><option value="03">03</option><option value="04">04</option><option value="05">05</option><option value="06">06</option><option value="07">07</option><option value="08">08</option><option value="09">09</option><option value="10">10</option><option value="11">11</option><option value="12">12</option></select><select id="fBuyDay"></select></div><input type="hidden" id="fBuyDate" value="${h.buyDate}"></div>`,()=>App.saveEditHolding(id));})();},
   onMarketChange(){const m=document.getElementById('fMarket')?.value,hint=document.getElementById('fSymbolHint');if(hint)hint.textContent=m==='HK'?'港股輸入4-5位數字':'美股輸入代碼（如 AAPL）';},
-  initDateSelectors(initial){
-    const ySel=document.getElementById('fBuyYear'),mSel=document.getElementById('fBuyMonth'),dSel=document.getElementById('fBuyDay');
+  initDateSelectors(yId,mId,dId,initial){
+    const ySel=document.getElementById(yId),mSel=document.getElementById(mId),dSel=document.getElementById(dId);
     if(!ySel)return;
     const cur=new Date(),startY=cur.getFullYear()-20;
     ySel.innerHTML='';
@@ -519,7 +564,8 @@ const App={
     ySel.value=parts[0];mSel.value=parts[1];
     const updateDays=()=>{const y=parseInt(ySel.value),m=parseInt(mSel.value),days=new Date(y,m,0).getDate();dSel.innerHTML='';for(let d=1;d<=days;d++){const o=document.createElement('option');o.value=String(d).padStart(2,'0');o.textContent=String(d).padStart(2,'0');dSel.appendChild(o);}dSel.value=parts[2]<='31'?parts[2]:String(days).padStart(2,'0');};
     updateDays();
-    const sync=()=>{document.getElementById('fBuyDate').value=`${ySel.value}-${mSel.value}-${dSel.value}`;};
+    const hiddenId=dId.startsWith('fBuy')?'fBuyDate':(dId.startsWith('fSell')?'fSellDate':null);
+    const sync=()=>{if(hiddenId)document.getElementById(hiddenId).value=`${ySel.value}-${mSel.value}-${dSel.value}`;};
     ySel.onchange=()=>{updateDays();sync();};
     mSel.onchange=()=>{updateDays();sync();};
     dSel.onchange=sync;
@@ -529,6 +575,12 @@ const App={
   async saveNewHolding(){const data=App._getFormData();if(!data)return false;try{await Data.add(data);UI.toast('持倉已新增','success');await App.refreshPrices(true);document.getElementById('syncStatus').textContent='☁️ 已同步到雲端';return true;}catch(e){UI.toast('儲存失敗: '+e.message,'error');return false;}},
   async saveEditHolding(id){const data=App._getFormData();if(!data)return false;try{await Data.update(id,data);UI.toast('持倉已更新','success');await App.refreshPrices(true);return true;}catch(e){UI.toast('更新失敗: '+e.message,'error');return false;}},
   async deleteHolding(id){const holdings=await Data.getAll();const h=holdings.find(v=>v.id===id);if(!h)return;if(!confirm(`確定要刪除「${h.name||h.symbol}」嗎？`))return;try{await Data.remove(id);delete App.currentPrices[id];UI.toast(`已刪除 ${h.name}`,'success');const remaining=await Data.getAll();UI.renderAll(remaining.map(v=>calcHolding(v,App.currentPrices[v.id]||{})));if(remaining.length===0){UI.updateStatus(true,0);document.getElementById('lastUpdate').textContent='';}}catch(e){UI.toast('刪除失敗: '+e.message,'error');}},
+  async showCloseModal(id){const holdings=await Data.getAll();const h=holdings.find(v=>v.id===id);if(!h)return;const cur=App.currentPrices[id]?.price;const defPrice=cur||h.buyPrice;const today=new Date();const tY=today.getFullYear(),tM=String(today.getMonth()+1).padStart(2,'0'),tD=String(today.getDate()).padStart(2,'0');Modal.show('平倉記錄 - '+h.name,`<div style="margin-bottom:14px;color:var(--text-muted);font-size:.85rem">${h.symbol} (${h.market==='HK'?'港股':'美股'})<br>買入: <span class="mono">${Fmt.price(h.buyPrice,h.market==='HK'?'HKD':'USD')}</span> × ${h.quantity.toLocaleString()} 股 = ${Fmt.money(h.buyPrice*h.quantity,h.market==='HK'?'HKD':'USD')}<br>買入日期: ${Fmt.date(h.buyDate)}</div><div class="form-group"><label>賣出價格</label><input type="number" id="fSellPrice" value="${defPrice}" step="0.01" min="0.01"></div><div class="form-group"><label>賣出日期 (yyyy/mm/dd)</label><div class="form-row" style="grid-template-columns:1.4fr 1fr 1fr;gap:8px"><select id="fSellYear"></select><select id="fSellMonth"><option value="01">01</option><option value="02">02</option><option value="03">03</option><option value="04">04</option><option value="05">05</option><option value="06">06</option><option value="07">07</option><option value="08">08</option><option value="09">09</option><option value="10">10</option><option value="11">11</option><option value="12">12</option></select><select id="fSellDay"></select></div><input type="hidden" id="fSellDate" value="${tY}-${tM}-${tD}"></div>`,()=>App.saveCloseHolding(h));},
+  async saveCloseHolding(h){const sellPrice=parseFloat(document.getElementById('fSellPrice').value);const sellDate=document.getElementById('fSellDate').value;if(!sellPrice||sellPrice<=0){UI.toast('請輸入有效的賣出價格','error');return false;}if(!sellDate){UI.toast('請選擇賣出日期','error');return false;}try{const r=await Data.closeHolding(h,sellPrice,sellDate);const sign=r.pnl>=0?'+':'';UI.toast(`平倉成功 · 損益 ${sign}${Fmt.money(r.pnl,h.market==='HK'?'HKD':'USD')} (${sign}${r.pnlPct.toFixed(2)}%)`,'success');delete App.currentPrices[h.id];await App.refresh();return true;}catch(e){UI.toast('平倉失敗: '+e.message,'error');return false;}},
+  async switchTab(tab){document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));document.getElementById('holdingsContainer').style.display=tab==='active'?'block':'none';document.getElementById('historyContainer').style.display=tab==='history'?'block':'none';document.getElementById('summaryHK').style.display=tab==='active'?'grid':'none';document.getElementById('summaryUS').style.display=tab==='active'?'grid':'none';if(tab==='history'){await App.renderHistory();}},
+  async renderHistory(){const c=document.getElementById('historyContainer');try{const items=await Data.getHistory();if(items.length===0){c.innerHTML='<div class="empty-state"><div class="icon">📜</div><h3>尚無歷史記錄</h3><p>在持倉點 ✓ 即可平倉並記錄到這裡</p></div>';return;}const hk=items.filter(x=>x.market==='HK'),us=items.filter(x=>x.market==='US');const totalPnl=items.reduce((s,x)=>s+x.pnl,0);const winners=items.filter(x=>x.pnl>0).length;let html='<div class="market-section"><div class="market-header"><div class="market-title">📜 平倉記錄</div><div class="market-badge">'+items.length+' 筆 · 勝率 '+(items.length>0?(winners/items.length*100).toFixed(0):0)+'%</div></div></div>';html+=UI._historyTableHTML(hk,'HKD',7.82);html+=UI._historyTableHTML(us,'USD',1);html+='</div>';c.innerHTML=html;}catch(e){c.innerHTML='<div class="empty-state"><h3>載入失敗</h3><p>'+e.message+'</p></div>';}},
+  async deleteHistory(id){if(!confirm('確定要刪除這筆歷史記錄嗎？'))return;try{await Data.removeHistory(id);UI.toast('已刪除歷史記錄','success');await App.renderHistory();}catch(e){UI.toast('刪除失敗: '+e.message,'error');}},
+  async refresh(){const data=await Data.getAll();UI.renderAll(data.map(v=>calcHolding(v,App.currentPrices[v.id]||{})));if(document.getElementById('historyContainer').style.display!=='none'){await App.renderHistory();}},
   exportData(){Data.getAll().then(data=>{if(data.length===0){UI.toast('沒有持倉可匯出','error');return;}const json=JSON.stringify(data.map(h=>({symbol:h.symbol,name:h.name,market:h.market,buyPrice:h.buyPrice,quantity:h.quantity,buyDate:h.buyDate})),null,2);const blob=new Blob([json],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`portfolio-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url);UI.toast('備份已下載','success');});},
   importData(event){const file=event.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=async(e)=>{try{const data=JSON.parse(e.target.result);if(!Array.isArray(data))throw new Error('格式錯誤');data.forEach((h,i)=>{if(!h.symbol||!h.market||!h.buyPrice||!h.quantity)throw new Error(`第${i+1}筆格式不完整`);});if(!confirm(`即將匯入 ${data.length} 筆持倉到雲端，確定繼續？`))return;await Data.importAll(data);UI.toast(`已匯入 ${data.length} 筆持倉`,'success');await App.refreshPrices(true);}catch(err){UI.toast('匯入失敗: '+err.message,'error');}};reader.readAsText(file);event.target.value='';}
 };
