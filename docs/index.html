@@ -361,7 +361,7 @@ const Auth = {
     const email = document.getElementById('loginEmail').value.trim();
     if (!email) { UI.toast('請輸入電子郵件', 'error'); return; }
     const btn = document.getElementById('loginBtn'); btn.disabled = true; btn.textContent = '傳送中...';
-    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin } });
+    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: 'https://silenceaxy.github.io/portfolio-tracker/' } });
     if (error) { UI.toast('登入失敗: ' + error.message, 'error'); btn.disabled = false; btn.textContent = '傳送登入連結 ✉️'; }
     else { UI.toast('已傳送登入連結到 ' + email, 'success'); btn.textContent = '已傳送 ✓'; }
   },
