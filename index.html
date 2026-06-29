@@ -495,7 +495,7 @@ const PriceService = {
 // ═══════════════════════════════════════════
 // Calculations
 // ═══════════════════════════════════════════
-function calcHolding(h, pd) { const cp=pd?.price||h.lastPrice||h.buyPrice, pc=pd?.prevClose||cp, mv=cp*h.quantity, cb=h.buyPrice*h.quantity, upl=mv-cb, upct=cb>0?upl/cb*100:0, dayChg=(cp-pc)*h.quantity, dayChgPct=pc>0?(cp-pc)/pc*100:0; return {...h,currentPrice:cp,prevClose:pc,marketValue:mv,costBasis:cb,unrealizedPL:upl,unrealizedPct:upct,dayChange:dayChg,dayChangePct:dayChgPct,name:pd?.name||h.name||h.symbol}; }
+function calcHolding(h, pd) { const cp=pd?.price||h.lastPrice||h.buyPrice, pc=pd?.prevClose||cp, mv=cp*h.quantity, cb=h.buyPrice*h.quantity, upl=mv-cb, upct=cb>0?upl/cb*100:0, dayChg=(cp-pc)*h.quantity, dayChgPct=pc>0?(cp-pc)/pc*100:0; return {...h,currentPrice:cp,prevClose:pc,marketValue:mv,costBasis:cb,unrealizedPL:upl,unrealizedPct:upct,dayChange:dayChg,dayChangePct:dayChgPct,name:(pd&&pd.name&&pd.name.length>0)?pd.name:(h.name||h.symbol)}; }
 function calcSummary(items) { let mv=0,cb=0,pl=0; items.forEach(c=>{mv+=c.marketValue;cb+=c.costBasis;pl+=c.unrealizedPL;}); return {totalMV:mv,totalCost:cb,totalPL:pl,totalPct:cb>0?pl/cb*100:0,count:items.length}; }
 
 // ═══════════════════════════════════════════
