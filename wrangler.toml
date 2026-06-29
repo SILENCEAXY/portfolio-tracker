@@ -1,4 +1,4 @@
-name = "stock-tracker-api"
+name = "portfolio-tracker"
 main = "worker/index.js"
 compatibility_date = "2025-01-01"
 
