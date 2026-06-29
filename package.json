@@ -1,0 +1,6 @@
+{
+  "name": "portfolio-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "港股+美股持倉追蹤工具 (Cloudflare Worker + Frontend)"
+}

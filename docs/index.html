@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Portfolio Tracker · 持倉追蹤</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root {
+  --bg-root: #08090c;
+  --bg-card: #111318;
+  --bg-card-hover: #161920;
+  --bg-input: #15171d;
+  --border: #1e212a;
+  --border-accent: #2a2e3a;
+  --text-primary: #e8eaed;
+  --text-secondary: #8b8f9a;
+  --text-muted: #555963;
+  --accent: #00e6c0;
+  --accent-dim: rgba(0,230,192,0.12);
+  --gain: #00e6c0;
+  --loss: #ff4d6a;
+  --gain-bg: rgba(0,230,192,0.07);
+  --loss-bg: rgba(255,77,106,0.07);
+  --radius: 10px;
+  --radius-sm: 6px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:15px;scroll-behavior:smooth}
+body{
+  font-family:system-ui,-apple-system,'Segoe UI',sans-serif;
+  background:var(--bg-root);
+  color:var(--text-primary);
+  min-height:100vh;
+  line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+body::before{
+  content:'';
+  position:fixed;inset:0;
+  background:
+    linear-gradient(rgba(30,33,42,0.03) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(30,33,42,0.03) 1px,transparent 1px);
+  background-size:60px 60px;
+  pointer-events:none;z-index:0;
+}
+#app{position:relative;z-index:1;max-width:1280px;margin:0 auto;padding:32px 24px 80px}
+
+.loading{display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;gap:16px}
+.spinner{width:32px;height:32px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Header */
+.header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:36px}
+.header-left{display:flex;align-items:baseline;gap:12px}
+.header-left h1{
+  font-family:'DM Serif Display',serif;font-size:2rem;font-weight:400;
+  letter-spacing:-0.01em;color:var(--text-primary);
+}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0;animation:pulse-dot 2s infinite}
+@keyframes pulse-dot{0%,100%{opacity:1;box-shadow:0 0 8px var(--accent)}50%{opacity:.35;box-shadow:0 0 2px var(--accent)}}
+.header-right{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:9px 18px;border-radius:var(--radius-sm);
+  font-family:inherit;font-size:.85rem;font-weight:500;
+  cursor:pointer;transition:all .18s ease;
+  border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);
+  white-space:nowrap;user-select:none;
+}
+.btn:hover{background:var(--bg-card-hover);border-color:var(--border-accent)}
+.btn-primary{background:var(--accent);color:#08090c;border-color:var(--accent);font-weight:600}
+.btn-primary:hover{background:#00f0c8;border-color:#00f0c8;box-shadow:0 0 20px rgba(0,230,192,.2)}
+.btn-danger:hover{background:var(--loss-bg);border-color:var(--loss);color:var(--loss)}
+.btn-sm{padding:5px 12px;font-size:.78rem}
+.btn-icon{padding:7px 10px;font-size:.8rem}
+.btn:active{transform:scale(.97)}
+
+.user-chip{
+  display:flex;align-items:center;gap:8px;
+  padding:4px 14px 4px 6px;
+  border-radius:20px;border:1px solid var(--border);
+  background:var(--bg-card);font-size:.78rem;color:var(--text-secondary);
+}
+.user-avatar{
+  width:28px;height:28px;border-radius:50%;
+  background:var(--accent-dim);color:var(--accent);
+  display:flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:.7rem;
+}
+
+/* Summary */
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-bottom:32px}
+.card{
+  background:var(--bg-card);border:1px solid var(--border);
+  border-radius:var(--radius);padding:20px 22px;
+  transition:all .2s ease;
+}
+.card:hover{border-color:var(--border-accent);background:var(--bg-card-hover)}
+.card-label{font-size:.75rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+.card-value{font-family:'JetBrains Mono',monospace;font-size:1.55rem;font-weight:500;color:var(--text-primary)}
+.card-sub{font-size:.78rem;color:var(--text-secondary);margin-top:4px;font-family:'JetBrains Mono',monospace}
+.card-value.gain{color:var(--gain)}
+.card-value.loss{color:var(--loss)}
+
+/* Market */
+.market-section{margin-bottom:40px}
+.market-header{
+  display:flex;align-items:center;gap:12px;margin-bottom:18px;
+  padding-bottom:14px;border-bottom:1px solid var(--border);
+}
+.market-flag{font-size:1.5rem}
+.market-title{font-family:'DM Serif Display',serif;font-size:1.25rem;color:var(--text-primary)}
+.market-badge{
+  font-size:.7rem;padding:3px 10px;border-radius:20px;
+  background:var(--accent-dim);color:var(--accent);
+  font-weight:600;letter-spacing:.04em;
+}
+
+/* Table */
+.table-wrap{overflow-x:auto;border-radius:var(--radius);border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+thead{background:rgba(255,255,255,.015)}
+th{
+  text-align:left;padding:12px 16px;font-size:.72rem;
+  font-weight:600;color:var(--text-muted);
+  text-transform:uppercase;letter-spacing:.06em;
+  border-bottom:1px solid var(--border);white-space:nowrap;
+}
+th.right{text-align:right}
+td{
+  padding:12px 16px;border-bottom:1px solid rgba(30,33,42,.5);
+  font-family:'JetBrains Mono',monospace;font-size:.82rem;
+  white-space:nowrap;
+}
+td.name{font-family:system-ui,-apple-system,sans-serif;font-size:.85rem}
+td.right{text-align:right}
+tr.data-row{cursor:pointer;transition:background .15s}
+tr.data-row:hover{background:var(--bg-card-hover)}
+tr.data-row:last-child td{border-bottom:none}
+.price-flash{transition:background .4s ease}
+.price-flash.flash-gain{background:var(--gain-bg)}
+.price-flash.flash-loss{background:var(--loss-bg)}
+.gain-text{color:var(--gain)}
+.loss-text{color:var(--loss)}
+
+/* Empty */
+.empty-state{text-align:center;padding:80px 20px}
+.empty-state .icon{font-size:3.5rem;margin-bottom:16px;opacity:.6}
+.empty-state h3{font-family:'DM Serif Display',serif;font-size:1.3rem;color:var(--text-secondary);margin-bottom:8px}
+.empty-state p{color:var(--text-muted);font-size:.85rem;margin-bottom:24px}
+
+/* Modal */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.7);
+  backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+  display:flex;align-items:center;justify-content:center;
+  z-index:100;padding:20px;
+  animation:fadeIn .15s ease;
+}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal{
+  background:var(--bg-card);border:1px solid var(--border);
+  border-radius:var(--radius);padding:28px 30px;
+  width:100%;max-width:440px;
+  box-shadow:0 24px 80px rgba(0,0,0,.5);
+  animation:slideUp .2s ease;
+}
+@keyframes slideUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
+.modal h2{font-family:'DM Serif Display',serif;font-size:1.3rem;margin-bottom:22px}
+.form-group{margin-bottom:18px}
+.form-group label{display:block;font-size:.75rem;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em}
+.form-group input,.form-group select{
+  width:100%;padding:10px 14px;
+  background:var(--bg-input);border:1px solid var(--border);
+  border-radius:var(--radius-sm);color:var(--text-primary);
+  font-family:'JetBrains Mono',monospace;font-size:.85rem;
+  transition:border .18s;
+}
+.form-group input:focus,.form-group select:focus{outline:none;border-color:var(--accent)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:24px}
+.form-hint{font-size:.7rem;color:var(--text-muted);margin-top:4px}
+input[type="date"]{color-scheme:dark}
+
+/* Login */
+.login-card{
+  max-width:400px;margin:120px auto 0;padding:40px 36px;
+  background:var(--bg-card);border:1px solid var(--border);
+  border-radius:var(--radius);
+}
+.login-card h2{font-family:'DM Serif Display',serif;font-size:1.5rem;margin-bottom:8px}
+.login-card p{color:var(--text-secondary);font-size:.85rem;margin-bottom:28px}
+.login-card input{
+  width:100%;padding:12px 16px;margin-bottom:14px;
+  background:var(--bg-input);border:1px solid var(--border);
+  border-radius:var(--radius-sm);color:var(--text-primary);
+  font-family:'JetBrains Mono',monospace;font-size:.9rem;
+}
+.login-card input:focus{outline:none;border-color:var(--accent)}
+.login-card .btn{width:100%;justify-content:center;padding:12px}
+.login-card .hint{font-size:.73rem;color:var(--text-muted);text-align:center;margin-top:16px;line-height:1.6}
+
+/* Auth */
+.auth-overlay{
+  position:fixed;inset:0;background:var(--bg-root);
+  display:flex;align-items:center;justify-content:center;
+  z-index:500;
+}
+
+/* Status */
+.status-bar{
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
+  padding:14px 0;margin-top:12px;
+  border-top:1px solid var(--border);
+  font-size:.73rem;color:var(--text-muted);
+}
+.status-left{display:flex;align-items:center;gap:8px}
+.status-dot{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.status-dot.error{background:var(--loss)}
+.synced{color:var(--accent);font-size:.7rem}
+
+/* Toast */
+.toast{
+  position:fixed;bottom:24px;right:24px;z-index:200;
+  padding:12px 20px;border-radius:var(--radius-sm);
+  font-size:.82rem;font-weight:500;
+  background:var(--bg-card);border:1px solid var(--border);
+  color:var(--text-primary);
+  box-shadow:0 8px 32px rgba(0,0,0,.4);
+  animation:toastIn .25s ease;
+  max-width:360px;
+}
+@keyframes toastIn{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
+.toast.success{border-color:var(--accent)}
+.toast.error{border-color:var(--loss);color:var(--loss)}
+
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--border-accent)}
+
+@media(max-width:768px){
+  #app{padding:20px 12px 60px}
+  .summary{grid-template-columns:repeat(2,1fr);gap:8px}
+  .card{padding:14px 16px}
+  .card-value{font-size:1.2rem}
+  .header h1{font-size:1.5rem}
+  .form-row{grid-template-columns:1fr}
+  td,th{padding:10px 12px;font-size:.75rem}
+  .login-card{margin:60px 16px 0;padding:28px 24px}
+}
+</style>
+</head>
+<body>
+
+<!-- Login Screen -->
+<div id="authScreen" class="auth-overlay" style="display:none">
+  <div class="login-card">
+    <h2>Portfolio Tracker</h2>
+    <p>登入以同步你的持倉資料</p>
+    <input type="email" id="loginEmail" placeholder="電子郵件" autocomplete="email">
+    <button class="btn btn-primary" id="loginBtn" onclick="Auth.login()">傳送登入連結 ✉️</button>
+    <div class="hint">
+      首次使用會自動建立帳號<br>
+      密碼會透過電子郵件發送
+    </div>
+  </div>
+</div>
+
+<div id="app" style="display:none">
+  <header class="header">
+    <div class="header-left">
+      <h1>Portfolio Tracker</h1>
+      <div class="dot">&nbsp;</div>
+    </div>
+    <div class="header-right">
+      <button class="btn" onclick="App.refreshPrices()">⟳ 刷新</button>
+      <button class="btn" onclick="App.exportData()">⬇ 匯出</button>
+      <button class="btn" onclick="document.getElementById('importFile').click()">⬆ 匯入</button>
+      <input type="file" id="importFile" accept=".json" style="display:none" onchange="App.importData(event)">
+      <button class="btn btn-primary" onclick="App.showAddModal()">+ 新增持倉</button>
+      <div class="user-chip" onclick="Auth.logout()" title="點擊登出">
+        <div class="user-avatar" id="userAvatar">?</div>
+        <span id="userEmail" style="max-width:120px;overflow:hidden;text-overflow:ellipsis">user</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="summary" id="summaryHK"></div>
+  <div class="summary" id="summaryUS"></div>
+
+  <div id="holdingsContainer">
+    <div class="empty-state" id="emptyState">
+      <div class="icon">📊</div>
+      <h3>尚無持倉記錄</h3>
+      <p>點擊「+ 新增持倉」開始記錄港股和美股投資</p>
+      <button class="btn btn-primary" onclick="App.showAddModal()">+ 新增第一筆持倉</button>
+    </div>
+  </div>
+
+  <div class="status-bar" id="statusBar">
+    <div class="status-left">
+      <div class="status-dot" id="statusDot">&nbsp;</div>
+      <span id="statusText">就緒</span>
+    </div>
+    <span id="lastUpdate"></span>
+    <span class="synced" id="syncStatus">☁️ 已同步</span>
+    <span id="rateNote">數據延遲約15分鐘 · 僅供參考</span>
+  </div>
+</div>
+
+<!-- Loading -->
+<div id="loadingScreen" class="loading">
+  <div class="spinner"></div>
+  <span style="color:var(--text-muted);font-size:.85rem">載入中...</span>
+</div>
+
+<div id="modalContainer"></div>
+<div id="toastContainer"></div>
+
+<script>
+// ═══════════════════════════════════════════
+// CONFIG — 部署時改成你的真實設定
+// ═══════════════════════════════════════════
+const CONFIG = {
+  supabaseUrl: 'https://jjijzpfwmoqxjarbcivh.supabase.co',
+  supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpqaWp6cGZ3bW9xeGphcmJjaXZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3Mjk5NDksImV4cCI6MjA5ODMwNTk0OX0.BVbKfQ2KR0gPs9JBth_T5GXJU71xP4wI8t0_1T2Y6wc',
+  quoteEndpoint: 'https://stock-tracker-api.YOUR_SUBDOMAIN.workers.dev/api/quote',
+};
+
+// ═══════════════════════════════════════════
+// Supabase Client
+// ═══════════════════════════════════════════
+let supabase = null;
+
+// ═══════════════════════════════════════════
+// Auth
+// ═══════════════════════════════════════════
+const Auth = {
+  async init() {
+    if (!CONFIG.supabaseUrl || CONFIG.supabaseUrl.startsWith('https://YOUR')) {
+      UI.showError('請先設定 Supabase 和 Worker (修改 index.html 中的 CONFIG)');
+      return false;
+    }
+    supabase = window.supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey, {
+      auth: { persistSession: true, autoRefreshToken: true }
+    });
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) { Auth.onLogin(session.user); return true; }
+    else { document.getElementById('loadingScreen').style.display = 'none'; document.getElementById('authScreen').style.display = 'flex'; return false; }
+  },
+  async login() {
+    const email = document.getElementById('loginEmail').value.trim();
+    if (!email) { UI.toast('請輸入電子郵件', 'error'); return; }
+    const btn = document.getElementById('loginBtn'); btn.disabled = true; btn.textContent = '傳送中...';
+    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.origin } });
+    if (error) { UI.toast('登入失敗: ' + error.message, 'error'); btn.disabled = false; btn.textContent = '傳送登入連結 ✉️'; }
+    else { UI.toast('已傳送登入連結到 ' + email, 'success'); btn.textContent = '已傳送 ✓'; }
+  },
+  async checkSession() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { document.getElementById('authScreen').style.display = 'flex'; document.getElementById('app').style.display = 'none'; return false; }
+    Auth.onLogin(session.user); return true;
+  },
+  onLogin(user) {
+    document.getElementById('authScreen').style.display = 'none'; document.getElementById('app').style.display = 'block'; document.getElementById('loadingScreen').style.display = 'none';
+    document.getElementById('userAvatar').textContent = (user.email||'?')[0].toUpperCase(); document.getElementById('userEmail').textContent = user.email||'User';
+    App.init();
+  },
+  async logout() {
+    await supabase.auth.signOut();
+    document.getElementById('authScreen').style.display = 'flex'; document.getElementById('app').style.display = 'none';
+  }
+};
+
+// ═══════════════════════════════════════════
+// Data Layer (Supabase)
+// ═══════════════════════════════════════════
+const Data = {
+  async getAll() { const { data, error } = await supabase.from('holdings').select('*').order('created_at',{ascending:false}); if(error)throw error; return data.map(row=>({id:row.id,symbol:row.symbol,name:row.name,market:row.market,buyPrice:parseFloat(row.buy_price),quantity:row.quantity,buyDate:row.buy_date,lastPrice:null,cloud:true})); },
+  async add(h) { const {data,error}=await supabase.from('holdings').insert({symbol:h.symbol,name:h.name,market:h.market,buy_price:h.buyPrice,quantity:h.quantity,buy_date:h.buyDate,user_id:(await supabase.auth.getSession()).data.session.user.id}).select().single(); if(error)throw error; return data; },
+  async update(id,u) { const {error}=await supabase.from('holdings').update({symbol:u.symbol,name:u.name,market:u.market,buy_price:u.buyPrice,quantity:u.quantity,buy_date:u.buyDate}).eq('id',id); if(error)throw error; },
+  async remove(id) { const {error}=await supabase.from('holdings').delete().eq('id',id); if(error)throw error; },
+  async importAll(rows) { const userId=(await supabase.auth.getSession()).data.session.user.id; const inserts=rows.map(r=>({symbol:r.symbol,name:r.name||r.symbol,market:r.market,buy_price:r.buyPrice,quantity:r.quantity,buy_date:r.buyDate,user_id:userId})); const {error}=await supabase.from('holdings').insert(inserts); if(error)throw error; }
+};
+
+// ═══════════════════════════════════════════
+// Price Service
+// ═══════════════════════════════════════════
+const PriceService = {
+  async fetchAll(holdings) {
+    const results={}; if(holdings.length===0)return results;
+    try{
+      const param=JSON.stringify(holdings.map(h=>({id:h.id,market:h.market,symbol:h.symbol})));
+      const resp=await fetch(`${CONFIG.quoteEndpoint}?holdings=${encodeURIComponent(param)}`,{signal:AbortSignal.timeout(15000)});
+      if(!resp.ok)throw new Error(`HTTP ${resp.status}`);
+      const json=await resp.json(), batch=json.results||{};
+      holdings.forEach(h=>{const e=batch[h.id]; if(e&&e.ok&&e.data){const d=e.data; results[h.id]={price:d.price,prevClose:d.prevClose||d.price,currency:d.currency,name:d.name,change:d.change,changePct:d.changePct};}else results[h.id]={error:e?.error||'no data',price:null};});
+    }catch(e){console.warn('[Price]',e.message); holdings.forEach(h=>{results[h.id]={error:e.message,price:null};});}
+    return results;
+  }
+};
+
+// ═══════════════════════════════════════════
+// Calculations
+// ═══════════════════════════════════════════
+function calcHolding(h, pd) { const cp=pd?.price||h.lastPrice||h.buyPrice, pc=pd?.prevClose||cp, mv=cp*h.quantity, cb=h.buyPrice*h.quantity, upl=mv-cb, upct=cb>0?upl/cb*100:0, dayChg=(cp-pc)*h.quantity, dayChgPct=pc>0?(cp-pc)/pc*100:0; return {...h,currentPrice:cp,prevClose:pc,marketValue:mv,costBasis:cb,unrealizedPL:upl,unrealizedPct:upct,dayChange:dayChg,dayChangePct:dayChgPct,name:pd?.name||h.name||h.symbol}; }
+function calcSummary(items) { let mv=0,cb=0,pl=0; items.forEach(c=>{mv+=c.marketValue;cb+=c.costBasis;pl+=c.unrealizedPL;}); return {totalMV:mv,totalCost:cb,totalPL:pl,totalPct:cb>0?pl/cb*100:0,count:items.length}; }
+
+// ═══════════════════════════════════════════
+// Formatting
+// ═══════════════════════════════════════════
+const Fmt={
+  price(v,cur){if(v==null||isNaN(v))return'—';return(cur==='HKD'?'HK$':'US$')+Number(v).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});},
+  money(v,cur){if(v==null||isNaN(v))return'—';const sym=cur==='HKD'?'HK$':'US$',abs=Math.abs(v); return(v<0?'-':'')+sym+abs.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});},
+  pct(v){if(v==null||isNaN(v))return'—';return(v>=0?'+':'')+v.toFixed(2)+'%';},
+  date(d){if(!d)return'—';return new Date(d).toLocaleDateString('zh-HK',{year:'numeric',month:'short',day:'numeric'});},
+  time(t){if(!t)return'';return new Date(t).toLocaleTimeString('zh-HK',{hour:'2-digit',minute:'2-digit',second:'2-digit'});}
+};
+
+// ═══════════════════════════════════════════
+// UI
+// ═══════════════════════════════════════════
+const UI={
+  renderAll(calculated){UI.renderSummaries(calculated);UI.renderHoldings(calculated);UI.updateStatus(true,calculated.length);},
+  renderSummaries(calculated){
+    const hk=calculated.filter(c=>c.market==='HK'), us=calculated.filter(c=>c.market==='US'), rate=7.82;
+    document.getElementById('summaryHK').innerHTML=UI._summaryHTML('🇭🇰 港股','HKD',rate,hk);
+    document.getElementById('summaryUS').innerHTML=UI._summaryHTML('🇺🇸 美股','USD',rate,us);
+  },
+  _summaryHTML(label,currency,rate,items){
+    if(items.length===0) return `<div class="card"><div class="card-label">${label}</div><div class="card-value" style="color:var(--text-muted);font-size:1rem">暫無持倉</div></div>`;
+    const s=calcSummary(items), plClass=s.totalPL>=0?'gain':'loss', equiv=currency==='HKD'?`≈ US$${(s.totalMV/rate).toLocaleString('en-US',{maximumFractionDigits:0})}`:`≈ HK$${(s.totalMV*rate).toLocaleString('en-US',{maximumFractionDigits:0})}`;
+    return `<div class="card"><div class="card-label">${label} · 總市值</div><div class="card-value">${Fmt.money(s.totalMV,currency)}</div><div class="card-sub">${equiv}</div></div><div class="card"><div class="card-label">總成本</div><div class="card-value">${Fmt.money(s.totalCost,currency)}</div></div><div class="card"><div class="card-label">未實現盈虧</div><div class="card-value ${plClass}">${Fmt.money(s.totalPL,currency)}</div></div><div class="card"><div class="card-label">總報酬率</div><div class="card-value ${plClass}">${Fmt.pct(s.totalPct)}</div></div>`;
+  },
+  renderHoldings(calculated){
+    const container=document.getElementById('holdingsContainer'), empty=document.getElementById('emptyState');
+    if(calculated.length===0){empty.style.display='block';container.querySelectorAll('.market-section').forEach(el=>el.remove());return;}
+    empty.style.display='none'; const hk=calculated.filter(c=>c.market==='HK'), us=calculated.filter(c=>c.market==='US');
+    let html=''; if(hk.length>0)html+=UI._marketTable('🇭🇰','港股','HKD',hk); if(us.length>0)html+=UI._marketTable('🇺🇸','美股','USD',us);
+    container.querySelectorAll('.market-section').forEach(el=>el.remove()); container.insertAdjacentHTML('beforeend',html);
+  },
+  _marketTable(flag,title,currency,items){
+    const rows=items.map(c=>{const plClass=c.unrealizedPL>=0?'gain-text':'loss-text',dayClass=c.dayChange>=0?'gain-text':'loss-text'; return `<tr class="data-row" onclick="App.showEditModal('${c.id}')" title="點擊編輯"><td class="name">${Utils.escapeHtml(c.name)}</td><td>${c.symbol}</td><td class="right">${Fmt.price(c.currentPrice,currency)}</td><td class="right ${dayClass} price-flash" data-id="${c.id}">${Fmt.pct(c.dayChangePct)}</td><td class="right">${Fmt.price(c.buyPrice,currency)}</td><td class="right">${c.quantity.toLocaleString()}</td><td class="right">${Fmt.money(c.marketValue,currency)}</td><td class="right ${plClass}">${Fmt.money(c.unrealizedPL,currency)}</td><td class="right ${plClass}">${Fmt.pct(c.unrealizedPct)}</td><td class="right" style="font-size:.7rem;color:var(--text-muted)">${Fmt.date(c.buyDate)}</td><td class="right"><button class="btn btn-sm btn-danger" onclick="event.stopPropagation();App.deleteHolding('${c.id}')">✕</button></td></tr>`;}).join('');
+    return `<div class="market-section"><div class="market-header"><span class="market-flag">${flag}</span><span class="market-title">${title}</span><span class="market-badge">${items.length} 持倉</span></div><div class="table-wrap"><table><thead><tr><th>名稱</th><th>代碼</th><th class="right">現價</th><th class="right">日漲跌</th><th class="right">買入價</th><th class="right">數量</th><th class="right">市值</th><th class="right">盈虧</th><th class="right">報酬率</th><th class="right">買入日</th><th class="right"></th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  },
+  updateStatus(ok,count){document.getElementById('statusDot').className=ok?'status-dot':'status-dot error'; document.getElementById('statusText').textContent=ok?`已連接 · ${count} 持倉`:'部分價格獲取失敗'; document.getElementById('lastUpdate').textContent='更新於 '+Fmt.time(Date.now()); document.getElementById('syncStatus').textContent='☁️ 已同步';},
+  flashCell(id,dir){document.querySelectorAll(`.price-flash[data-id="${id}"]`).forEach(cell=>{cell.classList.add(dir>=0?'flash-gain':'flash-loss');setTimeout(()=>cell.classList.remove('flash-gain','flash-loss'),1200);});},
+  toast(msg,type){const container=document.getElementById('toastContainer'),el=document.createElement('div');el.className='toast '+(type||'');el.textContent=msg;container.appendChild(el);setTimeout(()=>{el.style.opacity='0';el.style.transition='opacity .3s';setTimeout(()=>el.remove(),300);},2800);},
+  showError(msg){document.getElementById('loadingScreen').innerHTML=`<div style="color:var(--loss);margin-bottom:12px;font-size:3rem">⚠️</div><div style="color:var(--loss);font-size:1rem;max-width:400px;text-align:center">${msg}</div>`;}
+};
+
+// ═══════════════════════════════════════════
+// Utilities
+// ═══════════════════════════════════════════
+const Utils={escapeHtml:s=>{const d=document.createElement('div');d.textContent=s||'';return d.innerHTML;}};
+
+// ═══════════════════════════════════════════
+// Modal
+// ═══════════════════════════════════════════
+const Modal={
+  show(title,contentHTML,onSave){
+    document.getElementById('modalContainer').innerHTML=`<div class="modal-overlay" onclick="if(event.target===this)Modal.close()"><div class="modal"><h2>${title}</h2>${contentHTML}<div class="modal-actions"><button class="btn" onclick="Modal.close()">取消</button><button class="btn btn-primary" id="modalSaveBtn">儲存</button></div></div></div>`;
+    document.getElementById('modalSaveBtn').addEventListener('click',()=>{const r=onSave();if(r!==false)Modal.close();});
+    setTimeout(()=>document.querySelector('.modal input,select')?.focus(),100);
+  },
+  close:()=>{document.getElementById('modalContainer').innerHTML='';}
+};
+
+// ═══════════════════════════════════════════
+// App Controller
+// ═══════════════════════════════════════════
+const App={
+  currentPrices:{}, refreshTimer:null,
+  async init(){try{const holdings=await Data.getAll();if(holdings.length>0){UI.renderAll(holdings.map(h=>calcHolding(h,{})));await App.refreshPrices(true);}else UI.renderAll([]); App.refreshTimer=setInterval(()=>App.refreshPrices(),60000);}catch(e){UI.showError('無法載入資料: '+e.message);}},
+  async refreshPrices(silent){try{const holdings=await Data.getAll();if(holdings.length===0)return; if(!silent)UI.toast('正在更新價格...'); const prev={...App.currentPrices}, priceData=await PriceService.fetchAll(holdings); App.currentPrices=priceData; const calculated=holdings.map(h=>calcHolding(h,priceData[h.id])); UI.renderAll(calculated); calculated.forEach(c=>{const pv=prev[c.id];if(pv&&pv.price&&c.currentPrice!==pv.price)UI.flashCell(c.id,c.currentPrice-pv.price);}); const errors=Object.values(priceData).filter(p=>p.error).length; UI.updateStatus(errors===0,holdings.length); if(!silent)UI.toast(errors===0?'價格已更新':`${errors} 持倉價格失敗`,errors>0?'error':'success');}catch(e){if(!silent)UI.toast('更新價格失敗: '+e.message,'error');}},
+  showAddModal(){Modal.show('新增持倉',`<div class="form-group"><label>市場</label><select id="fMarket" onchange="App.onMarketChange()"><option value="HK">🇭🇰 港股</option><option value="US">🇺🇸 美股</option></select></div><div class="form-row"><div class="form-group"><label>股票代碼</label><input type="text" id="fSymbol" placeholder="如 0700 或 AAPL"><div class="form-hint" id="fSymbolHint">港股輸入4-5位數字</div></div><div class="form-group"><label>股票名稱</label><input type="text" id="fName" placeholder="如 騰訊控股"></div></div><div class="form-row"><div class="form-group"><label>買入價格</label><input type="number" id="fBuyPrice" placeholder="0.00" step="0.01" min="0.01"></div><div class="form-group"><label>數量（股）</label><input type="number" id="fQuantity" placeholder="0" step="1" min="1"></div></div><div class="form-group"><label>買入日期</label><input type="date" id="fBuyDate"></div>`,()=>App.saveNewHolding());},
+  showEditModal(id){(async()=>{const holdings=await Data.getAll();const h=holdings.find(h=>h.id===id);if(!h)return;Modal.show('編輯持倉',`<div class="form-group"><label>市場</label><select id="fMarket" onchange="App.onMarketChange()"><option value="HK" ${h.market==='HK'?'selected':''}>🇭🇰 港股</option><option value="US" ${h.market==='US'?'selected':''}>🇺🇸 美股</option></select></div><div class="form-row"><div class="form-group"><label>股票代碼</label><input type="text" id="fSymbol" value="${Utils.escapeHtml(h.symbol)}"><div class="form-hint" id="fSymbolHint">${h.market==='HK'?'港股輸入4-5位數字':'美股輸入代碼'}</div></div><div class="form-group"><label>股票名稱</label><input type="text" id="fName" value="${Utils.escapeHtml(h.name||'')}"></div></div><div class="form-row"><div class="form-group"><label>買入價格</label><input type="number" id="fBuyPrice" value="${h.buyPrice}" step="0.01" min="0.01"></div><div class="form-group"><label>數量（股）</label><input type="number" id="fQuantity" value="${h.quantity}" step="1" min="1"></div></div><div class="form-group"><label>買入日期</label><input type="date" id="fBuyDate" value="${h.buyDate}"></div>`,()=>App.saveEditHolding(id));})();},
+  onMarketChange(){const m=document.getElementById('fMarket')?.value,hint=document.getElementById('fSymbolHint');if(hint)hint.textContent=m==='HK'?'港股輸入4-5位數字':'美股輸入代碼（如 AAPL）';},
+  _getFormData(){const market=document.getElementById('fMarket').value;let symbol=document.getElementById('fSymbol').value.trim().toUpperCase();const name=document.getElementById('fName').value.trim(),buyPrice=parseFloat(document.getElementById('fBuyPrice').value),quantity=parseInt(document.getElementById('fQuantity').value),buyDate=document.getElementById('fBuyDate').value;if(!symbol){UI.toast('請輸入股票代碼','error');return null;}if(market==='HK'&&!/^\d{1,5}$/.test(symbol)){UI.toast('港股代碼應為數字','error');return null;}if(market==='US'&&!/^[A-Z]{1,5}$/.test(symbol)){UI.toast('美股代碼應為英文字母','error');return null;}if(!buyPrice||buyPrice<=0){UI.toast('請輸入有效的買入價格','error');return null;}if(!quantity||quantity<=0){UI.toast('請輸入有效的數量','error');return null;}if(!buyDate){UI.toast('請選擇買入日期','error');return null;}return {symbol,name,market,buyPrice,quantity,buyDate};},
+  async saveNewHolding(){const data=App._getFormData();if(!data)return false;try{await Data.add(data);UI.toast('持倉已新增','success');await App.refreshPrices(true);document.getElementById('syncStatus').textContent='☁️ 已同步到雲端';return true;}catch(e){UI.toast('儲存失敗: '+e.message,'error');return false;}},
+  async saveEditHolding(id){const data=App._getFormData();if(!data)return false;try{await Data.update(id,data);UI.toast('持倉已更新','success');await App.refreshPrices(true);return true;}catch(e){UI.toast('更新失敗: '+e.message,'error');return false;}},
+  async deleteHolding(id){const holdings=await Data.getAll();const h=holdings.find(v=>v.id===id);if(!h)return;if(!confirm(`確定要刪除「${h.name||h.symbol}」嗎？`))return;try{await Data.remove(id);delete App.currentPrices[id];UI.toast(`已刪除 ${h.name}`,'success');const remaining=await Data.getAll();UI.renderAll(remaining.map(v=>calcHolding(v,App.currentPrices[v.id]||{})));if(remaining.length===0){UI.updateStatus(true,0);document.getElementById('lastUpdate').textContent='';}}catch(e){UI.toast('刪除失敗: '+e.message,'error');}},
+  exportData(){Data.getAll().then(data=>{if(data.length===0){UI.toast('沒有持倉可匯出','error');return;}const json=JSON.stringify(data.map(h=>({symbol:h.symbol,name:h.name,market:h.market,buyPrice:h.buyPrice,quantity:h.quantity,buyDate:h.buyDate})),null,2);const blob=new Blob([json],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`portfolio-backup-${new Date().toISOString().slice(0,10)}.json`;a.click();URL.revokeObjectURL(url);UI.toast('備份已下載','success');});},
+  importData(event){const file=event.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=async(e)=>{try{const data=JSON.parse(e.target.result);if(!Array.isArray(data))throw new Error('格式錯誤');data.forEach((h,i)=>{if(!h.symbol||!h.market||!h.buyPrice||!h.quantity)throw new Error(`第${i+1}筆格式不完整`);});if(!confirm(`即將匯入 ${data.length} 筆持倉到雲端，確定繼續？`))return;await Data.importAll(data);UI.toast(`已匯入 ${data.length} 筆持倉`,'success');await App.refreshPrices(true);}catch(err){UI.toast('匯入失敗: '+err.message,'error');}};reader.readAsText(file);event.target.value='';}
+};
+
+document.addEventListener('DOMContentLoaded', async ()=>{await Auth.init();document.getElementById('loginEmail').addEventListener('keydown',(e)=>{if(e.key==='Enter')Auth.login();});document.addEventListener('keydown',(e)=>{if((e.ctrlKey||e.metaKey)&&e.key==='k'){e.preventDefault();App.showAddModal();}if(e.key==='Escape')Modal.close();});});
+</script>
+</body>
+</html>
