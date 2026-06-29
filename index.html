@@ -264,11 +264,13 @@ input[type="date"]{color-scheme:dark}
     <h2>Portfolio Tracker</h2>
     <p>登入以同步你的持倉資料</p>
     <input type="email" id="loginEmail" placeholder="電子郵件" autocomplete="email" style="margin-bottom:12px">
-    <input type="password" id="loginPassword" placeholder="密碼 (至少 6 個字元)" autocomplete="current-password" minlength="6" style="margin-bottom:14px">
-    <button class="btn btn-primary" id="loginBtn" onclick="Auth.login()">登入 / 註冊</button>
+    <input type="password" id="loginPassword" placeholder="密碼 (6+ 字元, 首次輸入自動註冊)" autocomplete="current-password" minlength="6" style="margin-bottom:14px">
+    <button class="btn btn-primary" id="loginBtn" onclick="Auth.loginPassword()">用密碼登入 / 註冊</button>
+    <div style="text-align:center;margin:14px 0;color:var(--text-muted);font-size:.75rem">— 或 —</div>
+    <button class="btn" id="magicLinkBtn" onclick="Auth.loginMagicLink()">傳送登入連結到信箱 ✉️</button>
     <div class="hint">
-      首次使用會自動建立帳號<br>
-      請用密碼 (6+ 字元) 註冊
+      兩種登入方式皆會同步到雲端<br>
+      首次使用會自動建立帳號
     </div>
   </div>
 </div>
@@ -358,7 +360,7 @@ const Auth = {
     if (session) { Auth.onLogin(session.user); return true; }
     else { document.getElementById('loadingScreen').style.display = 'none'; document.getElementById('authScreen').style.display = 'flex'; return false; }
   },
-  async login() {
+  async loginPassword() {
     const email = document.getElementById('loginEmail').value.trim();
     const password = document.getElementById('loginPassword').value;
     if (!email) { UI.toast('請輸入電子郵件', 'error'); return; }
@@ -367,13 +369,25 @@ const Auth = {
     let res = await supabase.auth.signInWithPassword({ email, password });
     if (res.error && (res.error.message.includes('Invalid login') || res.error.message.includes('invalid'))) {
       const signup = await supabase.auth.signUp({ email, password });
-      if (signup.error) { UI.toast('註冊失敗: ' + signup.error.message, 'error'); btn.disabled = false; btn.textContent = '登入 / 註冊'; return; }
-      if (signup.data.user && !signup.data.session) { UI.toast('請到信箱確認帳號 (檢查垃圾信匣)', 'error'); btn.disabled = false; btn.textContent = '登入 / 註冊'; return; }
+      if (signup.error) { UI.toast('註冊失敗: ' + signup.error.message, 'error'); btn.disabled = false; btn.textContent = '用密碼登入 / 註冊'; return; }
+      if (signup.data.user && !signup.data.session) { UI.toast('請到信箱確認帳號 (檢查垃圾信匣)', 'error'); btn.disabled = false; btn.textContent = '用密碼登入 / 註冊'; return; }
       res = signup;
     }
-    if (res.error) { UI.toast('登入失敗: ' + res.error.message, 'error'); btn.disabled = false; btn.textContent = '登入 / 註冊'; return; }
+    if (res.error) { UI.toast('登入失敗: ' + res.error.message, 'error'); btn.disabled = false; btn.textContent = '用密碼登入 / 註冊'; return; }
     UI.toast('登入成功！', 'success');
     Auth.onLogin(res.data.user);
+  },
+  async loginMagicLink() {
+    const email = document.getElementById('loginEmail').value.trim();
+    if (!email) { UI.toast('請輸入電子郵件', 'error'); return; }
+    const btn = document.getElementById('magicLinkBtn'); btn.disabled = true; btn.textContent = '傳送中...';
+    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: 'https://silenceaxy.github.io/' } });
+    if (error) {
+      if (error.message.includes('rate') || error.status === 429) { UI.toast('請求過於頻繁，請稍後再試或改用密碼登入', 'error'); }
+      else { UI.toast('登入失敗: ' + error.message, 'error'); }
+      btn.disabled = false; btn.textContent = '傳送登入連結到信箱 ✉️';
+    }
+    else { UI.toast('已傳送登入連結到 ' + email, 'success'); btn.textContent = '已傳送 ✓'; }
   },
   async checkSession() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -503,7 +517,7 @@ const App={
   importData(event){const file=event.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=async(e)=>{try{const data=JSON.parse(e.target.result);if(!Array.isArray(data))throw new Error('格式錯誤');data.forEach((h,i)=>{if(!h.symbol||!h.market||!h.buyPrice||!h.quantity)throw new Error(`第${i+1}筆格式不完整`);});if(!confirm(`即將匯入 ${data.length} 筆持倉到雲端，確定繼續？`))return;await Data.importAll(data);UI.toast(`已匯入 ${data.length} 筆持倉`,'success');await App.refreshPrices(true);}catch(err){UI.toast('匯入失敗: '+err.message,'error');}};reader.readAsText(file);event.target.value='';}
 };
 
-document.addEventListener('DOMContentLoaded', async ()=>{await Auth.init();const onEnter=()=>{if(e.key==='Enter')Auth.login();};document.getElementById('loginEmail').addEventListener('keydown',(e)=>{if(e.key==='Enter')Auth.login();});document.getElementById('loginPassword').addEventListener('keydown',(e)=>{if(e.key==='Enter')Auth.login();});document.addEventListener('keydown',(e)=>{if((e.ctrlKey||e.metaKey)&&e.key==='k'){e.preventDefault();App.showAddModal();}if(e.key==='Escape')Modal.close();});});
+document.addEventListener('DOMContentLoaded', async ()=>{await Auth.init();document.getElementById('loginEmail').addEventListener('keydown',(e)=>{if(e.key==='Enter')Auth.loginPassword();});document.getElementById('loginPassword').addEventListener('keydown',(e)=>{if(e.key==='Enter')Auth.loginPassword();});document.addEventListener('keydown',(e)=>{if((e.ctrlKey||e.metaKey)&&e.key==='k'){e.preventDefault();App.showAddModal();}if(e.key==='Escape')Modal.close();});});
 </script>
 </body>
 </html>
