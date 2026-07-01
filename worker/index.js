@@ -1,6 +1,6 @@
 /**
  * Cloudflare Worker: qt-proxy
- * Portfolio Tracker 報價反代 (港股 + 美股)
+ * Portfolio Tracker 報價代理 (港股 + 美股)
  */
 
 const corsHeaders = {
@@ -19,7 +19,7 @@ export default {
 
     if (url.pathname === '/api/health') {
       return Response.json(
-        { status: 'ok', service: 'qt-proxy', version: '1.0.0' },
+        { status: 'ok', service: 'qt-proxy', version: '1.1.0' },
         { headers: corsHeaders }
       );
     }
@@ -40,18 +40,27 @@ async function handleQuote(url, corsHeaders) {
     const symbolsRaw = url.searchParams.get('symbols') || '';
     const holdingsRaw = url.searchParams.get('holdings') || '';
 
-    let tencentSymbols = [];
-    let symToId = {};
-
+    // 收集 holdings 與對應的 tencent symbols
+    // 用 market+symbol 作為去重 key，保留 holdings list 對應回 id
+    const holdings = [];
     if (holdingsRaw) {
-      const holdings = JSON.parse(holdingsRaw);
-      for (const h of holdings) {
-        const ts = toTencentSymbol(h);
+      try { holdings.push(...JSON.parse(holdingsRaw)); } catch {}
+    }
+
+    // 去重 tencent symbols (避免重複打 API)，但保留每筆 id 的 mapping
+    const tsToIds = {}; // tencentSymbol -> [id, id, ...]
+    const tencentSymbols = [];
+    for (const h of holdings) {
+      const ts = toTencentSymbol(h);
+      if (!tsToIds[ts]) {
+        tsToIds[ts] = [];
         tencentSymbols.push(ts);
-        symToId[ts] = h.id || ts;
       }
-    } else if (symbolsRaw) {
-      tencentSymbols = symbolsRaw.split(',').map(s => s.trim()).filter(Boolean);
+      tsToIds[ts].push(h.id);
+    }
+
+    if (tencentSymbols.length === 0 && symbolsRaw) {
+      tencentSymbols.push(...symbolsRaw.split(',').map(s => s.trim()).filter(Boolean));
     }
 
     if (tencentSymbols.length === 0) {
@@ -80,18 +89,29 @@ async function handleQuote(url, corsHeaders) {
     const results = {};
     const lines = raw.split('\n').filter(l => l.trim());
 
+    // 解析每行，每個 tencent symbol 對應到所有 holdings id
     for (const line of lines) {
       const parsed = parseTencentLine(line);
       if (parsed) {
-        const key = symToId[parsed.symbol] || parsed.symbol;
-        results[key] = { ok: true, data: parsed };
+        const ids = tsToIds[parsed.symbol] || [];
+        if (ids.length === 0) {
+          // 沒有對應 holdings (只用 symbols 呼叫的情況)
+          results[parsed.symbol] = { ok: true, data: parsed };
+        } else {
+          for (const id of ids) {
+            results[id] = { ok: true, data: parsed };
+          }
+        }
       }
     }
 
+    // 為每個 holding id 補上 fallback (避免缺漏)
     for (const ts of tencentSymbols) {
-      const key = symToId[ts] || ts;
-      if (!results[key]) {
-        results[key] = { ok: false, error: 'No data' };
+      const ids = tsToIds[ts] || [];
+      for (const id of ids) {
+        if (!results[id]) {
+          results[id] = { ok: false, error: 'No data' };
+        }
       }
     }
 
